@@ -10,6 +10,7 @@
 | --- | --- | --- | --- |
 | 1 | 29.09.2026 | Введение в инфраструктуру | [Лекция 1](lectures/01-introduction.md) |
 | 2 | 08.10.2026 | Основы Kubernetes: архитектура и базовые объекты | [Лекция 2](lectures/02-kubernetes-basics.md) |
+| 3 | 13.10.2026 | Управление ресурсами и мультиарендность | [Лекция 3](lectures/03-kubernetes-resource-management.md) |
 
 ## Домашние задания
 
@@ -23,6 +24,8 @@
 lectures/                 Конспекты лекций
   01-introduction.md
   02-kubernetes-basics.md
+  03-kubernetes-resource-management.md
+  03-kubernetes-management-in-class.md  Исходные заметки с занятия
 hw/                       Домашние задания
   02/
     README.md             Условие задания
