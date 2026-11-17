@@ -7,6 +7,7 @@ spec:
   description: Relay coursework environments
   sourceRepos:
     - https://github.com/itzephir/hse-infra-course.git
+    - ghcr.io/itzephir/charts
   destinations:
     - server: https://kubernetes.default.svc
       namespace: hw6-relay-dev
@@ -14,6 +15,8 @@ spec:
       namespace: hw6-relay-prod
   clusterResourceWhitelist: []
   namespaceResourceWhitelist:
+    - group: batch
+      kind: Job
     - group: apps
       kind: Deployment
     - group: ""

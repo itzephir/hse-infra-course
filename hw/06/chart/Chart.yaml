@@ -1,0 +1,8 @@
+apiVersion: v2
+name: relay
+description: A small landing page for the infrastructure course
+type: application
+version: 0.0.0
+appVersion: local
+annotations:
+  org.opencontainers.image.source: https://github.com/itzephir/hse-infra-course

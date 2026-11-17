@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: hw6-helm-charts
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+type: Opaque
+stringData:
+  name: hw6-helm-charts
+  type: helm
+  url: ghcr.io/itzephir/charts
+  enableOCI: 'true'

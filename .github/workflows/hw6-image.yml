@@ -1,15 +1,15 @@
-name: HW6 build and deploy
+name: HW6 image and Helm chart
 
 on:
   push:
-    branches-ignore: [gitops/hw6]
+    branches: ['**']
   pull_request:
     paths:
       - hw/06/app/**
       - hw/06/scripts/smoke-image.sh
       - .github/workflows/hw6-image.yml
-      - .github/workflows/hw6-record-release.yml
-      - hw/06/scripts/publish-gitops.py
+      - hw/06/chart/**
+      - hw/06/scripts/package-chart.py
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -24,7 +24,7 @@ on:
 permissions:
   contents: read
 
-# Serialize GitOps updates from all source branches.
+# Publish release versions in order across all source branches.
 concurrency:
   group: ${{ github.event_name == 'push' && 'hw6-release' || format('hw6-check-{0}', github.run_id) }}
   cancel-in-progress: false
@@ -64,7 +64,7 @@ jobs:
           platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
           load: ${{ github.event_name == 'pull_request' }}
-          tags: ghcr.io/itzephir/hse-infra-course:sha-${{ steps.source.outputs.sha }}
+          tags: ghcr.io/itzephir/hse-infra-course:ci-${{ github.run_id }}-${{ github.run_attempt }}
           build-args: SOURCE_REVISION=${{ steps.source.outputs.sha }}
           labels: |
             org.opencontainers.image.source=https://github.com/itzephir/hse-infra-course
@@ -76,52 +76,48 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           DIGEST: ${{ steps.build.outputs.digest }}
           EVENT: ${{ github.event_name }}
+          CANDIDATE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
           if [[ "$EVENT" == pull_request ]]; then
-            image="ghcr.io/itzephir/hse-infra-course:sha-$SOURCE_SHA"
+            image="ghcr.io/itzephir/hse-infra-course:$CANDIDATE_TAG"
             bash hw/06/scripts/smoke-image.sh "$image" "$SOURCE_SHA" linux/amd64
           else
             image="ghcr.io/itzephir/hse-infra-course@$DIGEST"
             bash hw/06/scripts/smoke-image.sh "$image" "$SOURCE_SHA" linux/amd64 linux/arm64
           fi
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.19.4
+      - name: Validate Helm templates
+        run: |
+          set -euo pipefail
+          helm lint hw/06/chart --strict
+          helm template relay hw/06/chart --namespace hw6-relay-dev > /tmp/hw6-dev.yaml
+          helm template relay hw/06/chart --namespace hw6-relay-prod \
+            --set replicaCount=2 --set promotion.enabled=true > /tmp/hw6-prod.yaml
       - name: Record the tested release
         if: github.event_name != 'pull_request'
         id: release
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           DIGEST: ${{ steps.build.outputs.digest }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_USER: ${{ github.actor }}
         run: |
           set -euo pipefail
           image="ghcr.io/itzephir/hse-infra-course@$DIGEST"
           [[ "$image" =~ ^ghcr\.io/itzephir/hse-infra-course@sha256:[a-f0-9]{64}$ ]]
+          docker buildx imagetools create --tag "ghcr.io/itzephir/hse-infra-course:sha-$SOURCE_SHA" "$image"
+          chart_version="0.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
+          python3 hw/06/scripts/package-chart.py "$SOURCE_SHA" "$image" "$chart_version" "$RUNNER_TEMP/hw6-chart"
+          printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GH_USER" --password-stdin
+          helm push "$RUNNER_TEMP/hw6-chart/relay-$chart_version.tgz" oci://ghcr.io/itzephir/charts
           echo "image=$image" >> "$GITHUB_OUTPUT"
-          printf 'SOURCE_SHA=%s\nIMAGE=%s\n' "$SOURCE_SHA" "$image" > release.env
+          printf 'SOURCE_SHA=%s\nIMAGE=%s\nCHART_VERSION=%s\nCHART=oci://ghcr.io/itzephir/charts/relay\n' "$SOURCE_SHA" "$image" "$chart_version" > release.env
           cat release.env >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         if: github.event_name != 'pull_request'
         with:
           name: hw6-release-${{ steps.source.outputs.sha }}
           path: release.env
-
-  record-dev:
-    if: github.event_name == 'push'
-    needs: build
-    permissions:
-      contents: write
-    uses: ./.github/workflows/hw6-record-release.yml
-    with:
-      target: dev
-      source_sha: ${{ needs.build.outputs.source_sha }}
-      image: ${{ needs.build.outputs.image }}
-
-  record-prod:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [build, record-dev]
-    permissions:
-      contents: write
-    uses: ./.github/workflows/hw6-record-release.yml
-    with:
-      target: prod
-      source_sha: ${{ needs.build.outputs.source_sha }}
-      image: ${{ needs.build.outputs.image }}
