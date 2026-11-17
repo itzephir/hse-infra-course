@@ -11,6 +11,9 @@
 | 1 | 29.09.2026 | Введение в инфраструктуру | [Лекция 1](lectures/01-introduction.md) |
 | 2 | 08.10.2026 | Основы Kubernetes: архитектура и базовые объекты | [Лекция 2](lectures/02-kubernetes-basics.md) |
 | 3 | 13.10.2026 | Управление ресурсами и мультиарендность | [Лекция 3](lectures/03-kubernetes-resource-management.md) |
+| 4 | 20.10.2026 | Управление конфигурацией: Helm и Kustomize | [Лекция 4](lectures/04-application-configuration.md) |
+| 5 | 03.11.2026 | Хранение данных в Kubernetes: Volume, PV, PVC, CSI | [Лекция 5](lectures/05-kubernetes-storage.md) |
+| 6 | 10.11.2026 | GitOps и Argo CD | [Лекция 6](lectures/06-gitops.md) |
 
 ## Домашние задания
 
@@ -28,6 +31,10 @@ lectures/                 Конспекты лекций
   02-kubernetes-basics.md
   03-kubernetes-resource-management.md
   03-kubernetes-management-in-class.md  Исходные заметки с занятия
+  04-application-configuration.md
+  05-kubernetes-storage.md
+  06-gitops.md
+  06-gitops-in-class.md      Исходные заметки с занятия
 hw/                       Домашние задания
   02/
     README.md             Условие задания

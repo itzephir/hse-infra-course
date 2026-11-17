@@ -25,7 +25,7 @@
 
 Действующий workflow: [`.github/workflows/hw6-image.yml`](../../.github/workflows/hw6-image.yml).
 
-- Любой push в любую исходную ветку запускает сборку и публикацию, в том числе при изменении только документации. CI публикует проверенный образ и версионированный Helm chart в GHCR; запись в отдельную GitOps-ветку больше не нужна.
+- Любой push в любую исходную ветку запускает сборку и публикацию, в том числе при изменении только документации. CI публикует проверенный образ и версионированный Helm chart в GHCR.
 - Pull request с такими изменениями запускает сборку AMD64 и HTTP-проверки без публикации. Также предусмотрены ручной запуск и вызов как reusable workflow.
 - Для push и ручного запуска Buildx/QEMU собирают `linux/amd64` и `linux/arm64` в один OCI index и публикуют кандидат с тегом `ci-R-A`, где R — номер запуска GitHub, A — номер попытки. После успешных HTTP-, Helm- и Kustomize-проверок digest передаётся в Helm chart dev и artifact `release.env`. Prod не выбирает образы по тегам. ARM64 нужен для локального minikube на Apple Silicon.
 - После публикации [smoke-image.sh](scripts/smoke-image.sh) запускает обе платформы по полученному digest. Он проверяет главную страницу, CSS, SVG, `/healthz` и точный SHA в `/version.json`. Успешный artifact `release.env` создаётся только после этих проверок.
@@ -62,7 +62,7 @@ source:
 
 Здесь `targetRevision` — **диапазон версий chart**, а не Git commit. `*` выбирает максимальную доступную стабильную SemVer-версию. Любая ветка публикует новую версию chart, поэтому общий dev обновляется после любого успешного push. В опубликованном chart уже зафиксирован digest образа; Argo CD получает chart, выполняет `helm template` и применяет результат. `helm install` из CI не вызывается, жизненным циклом ресурсов управляет Argo CD. [Версии chart в Argo CD](https://argo-cd.readthedocs.io/en/stable/user-guide/tracking_strategies/), [интеграция Helm](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/).
 
-В [refresh-settings.yaml](argocd/refresh-settings.yaml) для учебного стенда задан опрос каждые 30 секунд с jitter до 5 секунд и кэш repo-server на 60 секунд. Это позволяет обнаруживать новые версии OCI chart без ручного Hard Refresh. Настройки применяются до создания Applications; после изменения параметров repo-server нужен перезапуск соответствующего компонента. При миграции существующий длительный кэш был сброшен однократно, затем отдельно проверяется автоматическое обнаружение следующей публикации. [Настройки кэша Argo CD](https://argo-cd.readthedocs.io/en/stable/operator-manual/argocd-cmd-params-cm-yaml/).
+В [refresh-settings.yaml](argocd/refresh-settings.yaml) для учебного стенда задан опрос каждые 30 секунд с jitter до 5 секунд и кэш repo-server на 60 секунд. Это позволяет автоматически обнаруживать новые версии OCI chart. Настройки применяются до создания Applications; после изменения параметров repo-server нужен перезапуск соответствующего компонента. [Настройки кэша Argo CD](https://argo-cd.readthedocs.io/en/stable/operator-manual/argocd-cmd-params-cm-yaml/).
 
 Для публичного OCI-источника [helm-repository.yaml](argocd/helm-repository.yaml) содержит только URL, тип `helm` и `enableOCI: true`; паролей в этом файле нет. Приватный chart требует отдельно настроенных registry credentials.
 
@@ -84,7 +84,7 @@ spec:
 
 Argo CD читает реальную конфигурацию из `main`, собирает Kustomize overlay и сам применяет Deployment/Service через Kubernetes API. В [kustomization.yaml](manifests/overlays/prod/kustomization.yaml) записан **точный digest** выбранного образа; [release.yaml](manifests/overlays/prod/release.yaml) сохраняет исходный SHA сборки и ссылку на CI.
 
-Новый Git commit конфигурации и исходный commit выбранного бинарного артефакта могут различаться. Например, commit B в main принимает digest сборки исходников A. Prod должен запускать выбранный A, поэтому больше нет подстановки `$ARGOCD_APP_REVISION` в тег образа. Сборка между dev и prod не повторяется.
+Git commit конфигурации и исходный commit выбранного бинарного артефакта могут различаться. Например, commit B в main принимает digest сборки исходников A. Prod запускает выбранный образ A по его digest. Сборка между dev и prod не повторяется.
 
 ### Что означает «проверенный main»
 
