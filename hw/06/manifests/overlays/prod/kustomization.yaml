@@ -11,4 +11,4 @@ replicas:
 images:
   - name: relay
     newName: ghcr.io/itzephir/hse-infra-course
-    digest: sha256:e60e5a4c3efafb7b7b773c66ebe53461d94789654b8a8ab88ad806d92c14db24
+    digest: sha256:1030fbb604f897a2f3899ca2bb95224604feb8014dc5a18af559ec9cfa8f7702
