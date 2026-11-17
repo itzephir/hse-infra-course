@@ -18,9 +18,10 @@
 - [Готовое решение и порядок запуска](solution.md).
 - [Результаты реальной сборки и доставки dev → prod](verification.md).
 - [Общие Kubernetes-манифесты](manifests/base/) и overlays [dev](manifests/overlays/dev/kustomization.yaml), [prod](manifests/overlays/prod/kustomization.yaml).
-- [Argo CD: dev из OCI Helm registry, prod из main](argocd/).
+- [Argo CD: dev из OCI Helm registry, prod-манифесты из main](argocd/).
 - [Приложение Relay](app/): простой статический лендинг и Dockerfile.
-- [Helm chart](chart/): шаблоны приложения и проверка dev перед prod.
+- [Helm chart](chart/): шаблоны dev-приложения.
+- [Подготовка prod-релиза для review](scripts/prepare-prod-release.py).
 - [GitHub Actions: сборка, GHCR и автоматическая доставка](../../.github/workflows/hw6-image.yml).
 - [Примеры push-доставки](workflows/).
 - [Запуск minikube и Argo CD](scripts/start-cluster.sh), [локальные адреса](scripts/port-forward.sh).

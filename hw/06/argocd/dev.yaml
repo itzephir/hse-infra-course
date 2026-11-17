@@ -4,7 +4,7 @@ metadata:
   name: relay-hw6-dev
   namespace: argocd
 spec:
-  project: relay-hw6
+  project: relay-hw6-dev
   source:
     repoURL: ghcr.io/itzephir/charts
     chart: relay

@@ -1,0 +1,10 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: relay
+spec:
+  template:
+    metadata:
+      annotations:
+        relay/source-revision: "07f4867c0a0795d198c5826ed9a4512c01f4d853"
+        relay/build-run: "https://github.com/itzephir/hse-infra-course/actions/runs/44092876883"

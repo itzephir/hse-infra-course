@@ -1,22 +1,36 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: relay-hw6
+  name: relay-hw6-dev
   namespace: argocd
 spec:
-  description: Relay coursework environments
+  description: CI-published Helm charts may deploy only to dev
   sourceRepos:
-    - https://github.com/itzephir/hse-infra-course.git
     - ghcr.io/itzephir/charts
   destinations:
     - server: https://kubernetes.default.svc
       namespace: hw6-relay-dev
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: relay-hw6-prod
+  namespace: argocd
+spec:
+  description: Reviewed Kubernetes configuration from Git for prod
+  sourceRepos:
+    - https://github.com/itzephir/hse-infra-course.git
+  destinations:
     - server: https://kubernetes.default.svc
       namespace: hw6-relay-prod
   clusterResourceWhitelist: []
   namespaceResourceWhitelist:
-    - group: batch
-      kind: Job
     - group: apps
       kind: Deployment
     - group: ""
