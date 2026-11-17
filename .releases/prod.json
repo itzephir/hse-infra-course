@@ -1,0 +1,6 @@
+{
+  "source_sha": "5e2bd8df736045b5bce893d9a35df9c8d12a3354",
+  "source_branch": "bootstrap",
+  "image": "ghcr.io/itzephir/hse-infra-course@sha256:f75f3dad2ae8bc6ded179927fc89004d55e8c19b8936314b6d8092442908cac3",
+  "run_url": "https://github.com/itzephir/hse-infra-course/actions/runs/44061782756"
+}
