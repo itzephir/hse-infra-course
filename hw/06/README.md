@@ -16,6 +16,7 @@
 ## Материалы решения
 
 - [Готовое решение и порядок запуска](solution.md).
+- [Результаты реальной сборки и доставки dev → prod](verification.md).
 - [Общие Kubernetes-манифесты](manifests/base/) и overlays [dev](manifests/overlays/dev/kustomization.yaml), [prod](manifests/overlays/prod/kustomization.yaml).
 - [Argo CD: проект и два приложения](argocd/).
 - [Приложение Relay](app/): простой статический лендинг и Dockerfile.
