@@ -1,59 +1,52 @@
 # Проверка доставки hw6
 
-Схема проверена на работающем стенде: dev получает OCI chart, prod — готовые манифесты из main с выбранным digest. Описание архитектуры — в [решении](solution.md).
+[Решение](solution.md) · [Условие](README.md) · [Запуски CI](https://github.com/itzephir/hse-infra-course/actions/workflows/hw6-image.yml)
 
-[Решение](solution.md) · [Условие](README.md)
+Стенд использует minikube `hw6`, Kubernetes `v1.37.0` и Argo CD `v3.6.1`. Dev получает OCI Helm chart, prod — манифесты из main с digest успешной main-сборки.
 
-## Выбор prod-артефакта и границы проектов
+## События доставки
 
-- Для prod выбран образ успешной main-сборки [44092876883](https://github.com/itzephir/hse-infra-course/actions/runs/44092876883), source SHA `07f4867c0a0795d198c5826ed9a4512c01f4d853`, digest `sha256:e60e5a4c3efafb7b7b773c66ebe53461d94789654b8a8ab88ad806d92c14db24`.
-- `prepare-prod-release.py` проверил метаданные этой сборки и сверил source SHA с artifact, подготовив локальные манифесты для review.
-- Отдельно проверено отклонение run рабочей ветки: команда завершилась с ошибкой, оба prod-файла остались неизменными.
-- `kubectl kustomize` рендерит только Deployment/Service в `hw6-relay-prod`, с указанным digest и source SHA. Helm dev проходит `helm lint --strict`.
-- На работающем Argo CD проверены два запрета: dev-проект отклонил Application с назначением в prod namespace; prod-проект отклонил OCI Helm-источник. Оба получили `InvalidSpecError`, синхронизации не запускались, проверочные Applications удалены.
-- Защита main остаётся предпосылкой учебной модели. Namespace-политики, квоты и сетевое усиление описаны как возможный следующий уровень, без изменения minikube.
+| Событие | Публикация CI | Действие Argo CD |
+| --- | --- | --- |
+| Открытие, новый commit или повторное открытие PR из ветки репозитория | Проверенный образ и Helm chart `relay` версии `0.<run ID>.<attempt>` | Общий dev выбирает последнюю версию chart |
+| Push в main | Проверенный образ; отдельный job коммитит его digest и source SHA в prod-манифесты main | Prod получает служебный commit и обновляет Deployment |
+| Push в другую ветку без PR | Выкладка не запускается | Состояние приложений сохраняется |
+| PR из fork | Локальная AMD64-сборка и проверки без публикации | Автоматическая выкладка не настроена |
 
-## Проверка независимости prod от новой публикации CI
+CI не получает kubeconfig или токен Argo CD. Build-задача имеет `contents: read` и `packages: write`; запись в Git разрешена отдельной задаче `promote-prod`, зависящей от успешной main-сборки. Служебный push через `GITHUB_TOKEN` не создаёт следующий push workflow.
 
-После принятия [PR №4](https://github.com/itzephir/hse-infra-course/pull/4) main разрешился в commit `eb080a066733e6a2dd0651c02c4f3a06e2779afb`. [Main workflow 44099698982](https://github.com/itzephir/hse-infra-course/actions/runs/44099698982) завершился успешно и выпустил:
+## Проверки артефактов и конфигурации
 
-```text
-SOURCE_SHA=eb080a066733e6a2dd0651c02c4f3a06e2779afb
-IMAGE=ghcr.io/itzephir/hse-infra-course@sha256:e62db4460c56ec8762cdbc493d3821e4ec6f25d82ed552b07ac6f14d07553d3f
-CHART_VERSION=0.44099698982.1
+- HTTP smoke-тесты AMD64/ARM64: `/`, `/style.css`, `/mark.svg`, `/healthz`, точный source SHA в `/version.json`.
+- `helm lint --strict`, рендеринг dev chart и prod Kustomize overlay. Образ публикуется по неизменяемому digest, dev chart выпускается после проверок.
+- `set-prod-release.py` проверен во временной копии: обновление digest и source SHA отражается в итоговом Deployment; неверный source SHA, другой registry repository или некорректный номер запуска отклоняются без изменения prod-файлов.
+- Workflow проверен actionlint; локальная версия линтера не поддерживает `concurrency.queue`, поэтому эта строка проверяется исполнением GitHub Actions.
+- Git diff не содержит ошибок пробелов. Main-задача коммитит только `kustomization.yaml` и `release.yaml` prod overlay; устаревшая main-сборка пропускает продвижение, git push выполняется без force.
+- На работающем Argo CD проверены запреты AppProject: dev-проект отклонил назначение в prod namespace; prod-проект отклонил OCI Helm-источник. Проверочные Applications получили `InvalidSpecError` без запуска синхронизации и были удалены.
+
+## Контроль автоматической доставки
+
+1. Открыть PR, дождаться успешного workflow и выбора его chart в dev. Изменить любой файл в PR и проверить новый запуск и новую версию chart. Prod должен сохранить свой main-образ.
+2. Принять PR в main. Дождаться задач `build` и `promote-prod`, затем служебного commit от `github-actions[bot]`, содержащего digest, source SHA и ссылку на этот main run.
+3. Проверить, что служебный commit не запустил повторную сборку, а prod Application разрешил main в этот commit и достиг `Synced / Healthy`.
+4. Сверить HTTP-версию prod с `SOURCE_SHA` main-сборки, а фактический образ Deployment — с `IMAGE` из её artifact `release.env`.
+
+```bash
+kubectl --context hw6 -n argocd get applications
+kubectl --context hw6 -n hw6-relay-dev rollout status deployment/relay
+kubectl --context hw6 -n hw6-relay-prod rollout status deployment/relay
+kubectl --context hw6 -n hw6-relay-prod get deployment relay \
+  -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
+curl -fsS http://127.0.0.1:18080/version.json
+curl -fsS http://127.0.0.1:18081/version.json
 ```
 
-- Dev без ручного refresh выбрал chart `0.44099698982.1` и новый digest `e62db446…`; `/version.json` вернул source SHA `eb080a0…`.
-- Prod автоматически применил Kustomize-конфигурацию из нового main, но сохранил выбранный digest `e60e5a4c…` и source SHA `07f4867…`. Новая публикация CI не выбрала за него другой образ.
-- Оба Application достигли `Synced / Healthy`; обе реплики prod готовы. `/healthz` dev и prod вернул `relay`, `/version.json` prod — полный выбранный source SHA `07f4867c0a0795d198c5826ed9a4512c01f4d853`.
-- Оба Application используют отдельные AppProject.
-
-## Публикация из рабочей ветки
-
-[Успешный workflow](https://github.com/itzephir/hse-infra-course/actions/runs/44090004399) для source commit `71fdff4e42edd0dfdbdb2236ddcc6652c45d0f56`:
-
-- Образ: `ghcr.io/itzephir/hse-infra-course@sha256:ef024e401cb956b1da47bbce6f1857f91cecada948abade4255385bb6930fda1`.
-- Chart: `oci://ghcr.io/itzephir/charts/relay`, версия `0.44090004399.1`.
-- Chart скачан анонимно через `helm pull`; OCI digest chart — `sha256:c86072df45699236afad38bd0c2ef1495115670eca3d3532d81ed0509a90c2ce`.
-- Dev Application с `targetRevision: '*'` выбрал эту версию. Deployment получил точный image digest и annotation `relay/source-revision` с указанным source SHA; rollout завершился.
-
-PR-проверка [Actions](https://github.com/itzephir/hse-infra-course/actions/runs/44090401497) также прошла и не публиковала артефакты.
-
-## Опрос Helm registry
-
-Для стенда [refresh-settings.yaml](argocd/refresh-settings.yaml) задаёт опрос 30 секунд с jitter до 5 секунд и repo/default cache repo-server 60 секунд. Автоматическое обнаружение новой версии chart проверено при публикации из main.
-
-Стенд использует minikube `hw6`, Kubernetes `v1.37.0`, Argo CD `v3.6.1`. CI не получает kubeconfig; публичный OCI chart читается без registry-пароля.
-
-## Проверки артефактов
-
-- Контейнерные HTTP smoke-тесты AMD64/ARM64 в CI: `/`, `/style.css`, `/mark.svg`, `/healthz`, точный source SHA в `/version.json`.
-- `helm lint --strict`, рендеринг dev chart и prod Kustomize overlay, упаковка chart с точным digest.
-- Семантическая версия chart `0.<GitHub run ID>.<attempt>` успешно упакована, опубликована и разрешена Argo CD.
-- YAML, shell-синтаксис и ссылки документов проверены; workflow успешно выполнен в GitHub Actions.
+Для автоматического обнаружения версий [refresh-settings.yaml](argocd/refresh-settings.yaml) задаёт опрос 30 секунд с jitter до 5 секунд и кэш repo-server 60 секунд.
 
 ## Доступ
 
 Пока работает [port-forward.sh](scripts/port-forward.sh): [dev](http://127.0.0.1:18080), [prod](http://127.0.0.1:18081), [Argo CD](https://127.0.0.1:18443).
 
-Если локальные адреса перестали отвечать, повторно запустить `bash hw/06/scripts/port-forward.sh`. Начальный пароль Argo CD и команды остановки/возобновления minikube описаны в [решении](solution.md#запуск-и-доступ). Пароли и kubeconfig в Git не добавлены.
+После rollout Pods локальные подключения при необходимости восстановить командой `bash hw/06/scripts/port-forward.sh`. Начальный пароль Argo CD и команды остановки/возобновления minikube описаны в [решении](solution.md#запуск-и-доступ). Пароли и kubeconfig в Git не добавлены.
+
+Защита main считается условием учебной модели. Дополнительные namespace-политики, квоты и сетевое усиление minikube описаны в решении.

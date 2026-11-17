@@ -2,16 +2,9 @@ name: HW6 image and Helm chart
 
 on:
   push:
-    branches: ['**']
+    branches: [main]
   pull_request:
-    paths:
-      - hw/06/app/**
-      - hw/06/scripts/smoke-image.sh
-      - .github/workflows/hw6-image.yml
-      - hw/06/chart/**
-      - hw/06/scripts/package-chart.py
-      - hw/06/manifests/**
-      - hw/06/argocd/**
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -26,9 +19,9 @@ on:
 permissions:
   contents: read
 
-# Publish release versions in order across all source branches.
+# Serialize PR previews and main releases, including the prod manifest update.
 concurrency:
-  group: ${{ github.event_name == 'push' && 'hw6-release' || format('hw6-check-{0}', github.run_id) }}
+  group: ${{ (github.event_name == 'push' || github.event_name == 'pull_request') && 'hw6-release' || format('hw6-check-{0}', github.run_id) }}
   cancel-in-progress: false
   queue: max
 
@@ -45,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_sha || github.sha }}
+          ref: ${{ inputs.source_sha || github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
       - name: Resolve source revision
         id: source
@@ -53,7 +46,7 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -63,9 +56,9 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: hw/06/app
-          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
-          push: ${{ github.event_name != 'pull_request' }}
-          load: ${{ github.event_name == 'pull_request' }}
+          platforms: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          load: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           tags: ghcr.io/itzephir/hse-infra-course:ci-${{ github.run_id }}-${{ github.run_attempt }}
           build-args: SOURCE_REVISION=${{ steps.source.outputs.sha }}
           labels: |
@@ -77,11 +70,11 @@ jobs:
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           DIGEST: ${{ steps.build.outputs.digest }}
-          EVENT: ${{ github.event_name }}
+          READ_ONLY_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}
           CANDIDATE_TAG: ci-${{ github.run_id }}-${{ github.run_attempt }}
         run: |
           set -euo pipefail
-          if [[ "$EVENT" == pull_request ]]; then
+          if [[ "$READ_ONLY_PR" == true ]]; then
             image="ghcr.io/itzephir/hse-infra-course:$CANDIDATE_TAG"
             bash hw/06/scripts/smoke-image.sh "$image" "$SOURCE_SHA" linux/amd64
           else
@@ -101,26 +94,70 @@ jobs:
           helm template relay hw/06/chart --namespace hw6-relay-dev > /tmp/hw6-dev.yaml
           kubectl kustomize hw/06/manifests/overlays/prod > /tmp/hw6-prod.yaml
       - name: Record the tested release
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         id: release
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
           DIGEST: ${{ steps.build.outputs.digest }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_USER: ${{ github.actor }}
         run: |
           set -euo pipefail
           image="ghcr.io/itzephir/hse-infra-course@$DIGEST"
           [[ "$image" =~ ^ghcr\.io/itzephir/hse-infra-course@sha256:[a-f0-9]{64}$ ]]
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          printf 'SOURCE_SHA=%s\nIMAGE=%s\n' "$SOURCE_SHA" "$image" > release.env
+      - name: Publish the PR Helm chart for dev
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_USER: ${{ github.actor }}
+        run: |
+          set -euo pipefail
           chart_version="0.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
-          python3 hw/06/scripts/package-chart.py "$SOURCE_SHA" "$image" "$chart_version" "$RUNNER_TEMP/hw6-chart"
+          python3 hw/06/scripts/package-chart.py "$SOURCE_SHA" "$IMAGE" "$chart_version" "$RUNNER_TEMP/hw6-chart"
           printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GH_USER" --password-stdin
           helm push "$RUNNER_TEMP/hw6-chart/relay-$chart_version.tgz" oci://ghcr.io/itzephir/charts
-          echo "image=$image" >> "$GITHUB_OUTPUT"
-          printf 'SOURCE_SHA=%s\nIMAGE=%s\nCHART_VERSION=%s\nCHART=oci://ghcr.io/itzephir/charts/relay\n' "$SOURCE_SHA" "$image" "$chart_version" > release.env
+          printf 'CHART_VERSION=%s\nCHART=oci://ghcr.io/itzephir/charts/relay\n' "$chart_version" >> release.env
+      - name: Summarize the release
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
           cat release.env >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
-        if: github.event_name != 'pull_request'
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
         with:
           name: hw6-release-${{ steps.source.outputs.sha }}
           path: release.env
+
+  promote-prod:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Update prod manifests after the successful main build
+        env:
+          SOURCE_SHA: ${{ needs.build.outputs.source_sha }}
+          IMAGE: ${{ needs.build.outputs.image }}
+        run: |
+          set -euo pipefail
+          if [[ $(git rev-parse HEAD) != "$SOURCE_SHA" ]]; then
+            echo 'Main has advanced; its newer build will select the prod release.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          python3 hw/06/scripts/set-prod-release.py "$SOURCE_SHA" "$IMAGE" "$GITHUB_RUN_ID"
+          git diff --check
+          git add hw/06/manifests/overlays/prod/kustomization.yaml hw/06/manifests/overlays/prod/release.yaml
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "chore(hw6): deploy main $SOURCE_SHA"
+          git push origin HEAD:refs/heads/main
+          echo "Prod manifests now select $IMAGE from $SOURCE_SHA." >> "$GITHUB_STEP_SUMMARY"
