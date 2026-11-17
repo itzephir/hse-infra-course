@@ -26,6 +26,8 @@ CI не получает kubeconfig или токен Argo CD. Build-задач�
 
 ## Контроль автоматической доставки
 
+[PR workflow 44131640640](https://github.com/itzephir/hse-infra-course/actions/runs/44131640640) успешно опубликовал образ и chart `0.44131640640.1` для source SHA `d3345b0187f8d83c5929eccdcffd9d13e0545ba9`. Argo CD автоматически выбрал этот chart для dev. Задача `promote-prod` получила статус `skipped`, prod сохранил свой main-образ.
+
 1. Открыть PR, дождаться успешного workflow и выбора его chart в dev. Изменить любой файл в PR и проверить новый запуск и новую версию chart. Prod должен сохранить свой main-образ.
 2. Принять PR в main. Дождаться задач `build` и `promote-prod`, затем служебного commit от `github-actions[bot]`, содержащего digest, source SHA и ссылку на этот main run.
 3. Проверить, что служебный commit не запустил повторную сборку, а prod Application разрешил main в этот commit и достиг `Synced / Healthy`.
