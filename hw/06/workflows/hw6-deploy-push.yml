@@ -1,0 +1,46 @@
+name: HW6 apply one environment
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        required: true
+        type: string
+      image:
+        required: true
+        type: string
+      config_sha:
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: hw6-${{ inputs.target }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: itzephir/hse-infra-course
+          ref: ${{ inputs.config_sha }}
+          persist-credentials: false
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.37.2
+      - name: Apply manifests and verify the website
+        env:
+          TARGET: ${{ inputs.target }}
+          IMAGE: ${{ inputs.image }}
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: |
+          set -euo pipefail
+          [[ -n "$KUBECONFIG_DATA" ]]
+          umask 077
+          export KUBECONFIG="$RUNNER_TEMP/hw6-kubeconfig"
+          trap 'rm -f "$KUBECONFIG"' EXIT
+          printf '%s\n' "$KUBECONFIG_DATA" > "$KUBECONFIG"
+          bash hw/06/scripts/deploy-push.sh "$TARGET" "$IMAGE"
+          printf 'Verified %s: %s\n' "$TARGET" "$IMAGE" >> "$GITHUB_STEP_SUMMARY"

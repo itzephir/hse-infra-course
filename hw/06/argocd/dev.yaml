@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: relay-hw6-dev
+  namespace: argocd
+spec:
+  project: relay-hw6
+  source:
+    repoURL: https://github.com/itzephir/hse-infra-course.git
+    targetRevision: codex/hw6-gitops
+    path: hw/06/manifests/overlays/dev
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: hw6-relay-dev
+  syncPolicy:
+    automated:
+      enabled: true
+      prune: true
+      selfHeal: true
+      allowEmpty: false
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 1m

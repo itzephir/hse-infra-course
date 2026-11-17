@@ -1,0 +1,70 @@
+name: HW6 push dev then prod
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Full hse-infra-course commit SHA to build once
+        required: true
+        type: string
+      config_ref:
+        description: hse-infra-course ref; resolved once for both environments
+        default: main
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+# Keep dev unchanged while this release waits for production approval.
+concurrency:
+  group: hw6-push-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      config_sha: ${{ steps.config.outputs.sha }}
+    steps:
+      - name: Validate the release source
+        env:
+          SOURCE_SHA: ${{ inputs.source_sha }}
+        run: '[[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          repository: itzephir/hse-infra-course
+          ref: ${{ inputs.config_ref }}
+          persist-credentials: false
+      - name: Freeze the manifests revision
+        id: config
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    uses: ./.github/workflows/hw6-image.yml
+    with:
+      source_sha: ${{ inputs.source_sha }}
+
+  dev:
+    needs: [prepare, build]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/hw6-deploy-push.yml
+    with:
+      target: dev
+      image: ${{ needs.build.outputs.image }}
+      config_sha: ${{ needs.prepare.outputs.config_sha }}
+    secrets: inherit
+
+  prod:
+    needs: [prepare, build, dev]
+    permissions:
+      contents: read
+    uses: ./.github/workflows/hw6-deploy-push.yml
+    with:
+      target: prod
+      image: ${{ needs.build.outputs.image }}
+      config_sha: ${{ needs.prepare.outputs.config_sha }}
+    secrets: inherit

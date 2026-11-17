@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: relay-hw6
+  namespace: argocd
+spec:
+  description: Relay coursework environments
+  sourceRepos:
+    - https://github.com/itzephir/hse-infra-course.git
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: hw6-relay-dev
+    - server: https://kubernetes.default.svc
+      namespace: hw6-relay-prod
+  clusterResourceWhitelist: []
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+    - group: ""
+      kind: Service

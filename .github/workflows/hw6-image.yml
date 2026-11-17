@@ -1,0 +1,99 @@
+name: HW6 image
+
+on:
+  push:
+    paths:
+      - hw/06/app/**
+      - hw/06/scripts/smoke-image.sh
+      - .github/workflows/hw6-image.yml
+  pull_request:
+    paths:
+      - hw/06/app/**
+      - hw/06/scripts/smoke-image.sh
+      - .github/workflows/hw6-image.yml
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      source_sha:
+        required: true
+        type: string
+    outputs:
+      image:
+        description: Tested immutable image reference
+        value: ${{ jobs.build.outputs.image }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.release.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_sha || github.sha }}
+          persist-credentials: false
+      - name: Resolve source revision
+        id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name != 'pull_request'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build the landing image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: hw/06/app
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ghcr.io/itzephir/hse-infra-course:sha-${{ steps.source.outputs.sha }}
+          build-args: SOURCE_REVISION=${{ steps.source.outputs.sha }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/itzephir/hse-infra-course
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+          cache-from: type=gha,scope=hw6
+          cache-to: type=gha,mode=max,scope=hw6
+      - name: Test the built image
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          if [[ "$EVENT" == pull_request ]]; then
+            image="ghcr.io/itzephir/hse-infra-course:sha-$SOURCE_SHA"
+            bash hw/06/scripts/smoke-image.sh "$image" "$SOURCE_SHA" linux/amd64
+          else
+            image="ghcr.io/itzephir/hse-infra-course@$DIGEST"
+            bash hw/06/scripts/smoke-image.sh "$image" "$SOURCE_SHA" linux/amd64 linux/arm64
+          fi
+      - name: Record the tested release
+        if: github.event_name != 'pull_request'
+        id: release
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/itzephir/hse-infra-course@$DIGEST"
+          [[ "$image" =~ ^ghcr\.io/itzephir/hse-infra-course@sha256:[a-f0-9]{64}$ ]]
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          printf 'SOURCE_SHA=%s\nIMAGE=%s\n' "$SOURCE_SHA" "$image" > release.env
+          cat release.env >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: github.event_name != 'pull_request'
+        with:
+          name: hw6-release-${{ steps.source.outputs.sha }}
+          path: release.env
