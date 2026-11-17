@@ -1,16 +1,15 @@
-name: HW6 image
+name: HW6 build and deploy
 
 on:
   push:
-    paths:
-      - hw/06/app/**
-      - hw/06/scripts/smoke-image.sh
-      - .github/workflows/hw6-image.yml
+    branches-ignore: [gitops/hw6]
   pull_request:
     paths:
       - hw/06/app/**
       - hw/06/scripts/smoke-image.sh
       - .github/workflows/hw6-image.yml
+      - .github/workflows/hw6-record-release.yml
+      - hw/06/scripts/publish-gitops.py
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -25,6 +24,12 @@ on:
 permissions:
   contents: read
 
+# Serialize GitOps updates from all source branches.
+concurrency:
+  group: ${{ github.event_name == 'push' && 'hw6-release' || format('hw6-check-{0}', github.run_id) }}
+  cancel-in-progress: false
+  queue: max
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -34,6 +39,7 @@ jobs:
       packages: write
     outputs:
       image: ${{ steps.release.outputs.image }}
+      source_sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -97,3 +103,25 @@ jobs:
         with:
           name: hw6-release-${{ steps.source.outputs.sha }}
           path: release.env
+
+  record-dev:
+    if: github.event_name == 'push'
+    needs: build
+    permissions:
+      contents: write
+    uses: ./.github/workflows/hw6-record-release.yml
+    with:
+      target: dev
+      source_sha: ${{ needs.build.outputs.source_sha }}
+      image: ${{ needs.build.outputs.image }}
+
+  record-prod:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [build, record-dev]
+    permissions:
+      contents: write
+    uses: ./.github/workflows/hw6-record-release.yml
+    with:
+      target: prod
+      source_sha: ${{ needs.build.outputs.source_sha }}
+      image: ${{ needs.build.outputs.image }}

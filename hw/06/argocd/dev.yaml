@@ -3,12 +3,17 @@ kind: Application
 metadata:
   name: relay-hw6-dev
   namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
 spec:
   project: relay-hw6
   source:
     repoURL: https://github.com/itzephir/hse-infra-course.git
-    targetRevision: codex/hw6-gitops
+    targetRevision: 5e2bd8df736045b5bce893d9a35df9c8d12a3354
     path: hw/06/manifests/overlays/dev
+    kustomize:
+      images:
+        - relay=ghcr.io/itzephir/hse-infra-course@sha256:f75f3dad2ae8bc6ded179927fc89004d55e8c19b8936314b6d8092442908cac3
   destination:
     server: https://kubernetes.default.svc
     namespace: hw6-relay-dev

@@ -16,5 +16,7 @@ kubectl --context "$profile" --namespace argocd rollout status \
     statefulset/argocd-application-controller --timeout=300s
 kubectl --context "$profile" apply -f "$hw_dir/bootstrap/namespaces.yaml"
 kubectl --context "$profile" apply -f "$hw_dir/argocd/project.yaml"
-printf 'Argo CD %s is ready in minikube profile %s. Apply dev/prod Applications after pinning their images.\n' \
+kubectl --context "$profile" apply -f "$hw_dir/argocd/root-project.yaml"
+kubectl --context "$profile" apply --server-side --field-manager=hw6-health -f "$hw_dir/argocd/application-health.yaml"
+printf 'Argo CD %s is ready in minikube profile %s. Apply the root Application after initializing the GitOps branch.\n' \
     "$argocd_version" "$profile"
