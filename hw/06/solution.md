@@ -62,6 +62,8 @@ source:
 
 Здесь `targetRevision` — **диапазон версий chart**, а не Git commit. `*` выбирает максимальную доступную стабильную SemVer-версию. Любая ветка публикует новую версию chart, поэтому общий dev обновляется после любого успешного push. В опубликованном chart уже зафиксирован digest образа; Argo CD получает chart, выполняет `helm template` и применяет результат. `helm install` из CI не вызывается, жизненным циклом ресурсов управляет Argo CD. [Версии chart в Argo CD](https://argo-cd.readthedocs.io/en/stable/user-guide/tracking_strategies/), [интеграция Helm](https://argo-cd.readthedocs.io/en/stable/user-guide/helm/).
 
+В [refresh-settings.yaml](argocd/refresh-settings.yaml) для учебного стенда задан опрос каждые 30 секунд с jitter до 5 секунд и кэш repo-server на 60 секунд. Это позволяет обнаруживать новые версии OCI chart без ручного Hard Refresh. Настройки применяются до создания Applications; после изменения параметров repo-server нужен перезапуск соответствующего компонента. При миграции существующий длительный кэш был сброшен однократно, затем отдельно проверяется автоматическое обнаружение следующей публикации. [Настройки кэша Argo CD](https://argo-cd.readthedocs.io/en/stable/operator-manual/argocd-cmd-params-cm-yaml/).
+
 Для публичного OCI-источника [helm-repository.yaml](argocd/helm-repository.yaml) содержит только URL, тип `helm` и `enableOCI: true`; паролей в этом файле нет. Приватный chart требует отдельно настроенных registry credentials.
 
 ### Prod: chart прямо из main

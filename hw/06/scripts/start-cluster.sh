@@ -17,5 +17,10 @@ kubectl --context "$profile" --namespace argocd rollout status \
 kubectl --context "$profile" apply -f "$hw_dir/bootstrap/namespaces.yaml"
 kubectl --context "$profile" apply -f "$hw_dir/argocd/project.yaml"
 kubectl --context "$profile" apply -f "$hw_dir/argocd/helm-repository.yaml"
+kubectl --context "$profile" apply --server-side --field-manager=hw6-refresh -f "$hw_dir/argocd/refresh-settings.yaml"
+kubectl --context "$profile" --namespace argocd rollout restart deployment/argocd-repo-server
+kubectl --context "$profile" --namespace argocd rollout restart statefulset/argocd-application-controller
+kubectl --context "$profile" --namespace argocd rollout status deployment/argocd-repo-server --timeout=180s
+kubectl --context "$profile" --namespace argocd rollout status statefulset/argocd-application-controller --timeout=180s
 printf 'Argo CD %s is ready in minikube profile %s. Apply dev/prod Applications after publishing the first chart.\n' \
     "$argocd_version" "$profile"

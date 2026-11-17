@@ -1,72 +1,51 @@
-# Проверка работающего стенда hw6
-
-Этот файл сохраняет результаты предыдущих этапов стенда. Текущая конфигурация: dev следит за последней версией OCI Helm chart из GHCR, prod читает Helm chart из Git main. Актуальная схема и команды находятся в [решении](solution.md).
+# Проверка Helm-доставки hw6
 
 [Решение](solution.md) · [Условие](README.md)
 
-## Автоматическая доставка по веткам
+## Публикация из рабочей ветки
 
-- [Push в рабочую ветку](https://github.com/itzephir/hse-infra-course/actions/runs/44066685357) успешно выполнил build и `record-dev`; `record-prod` пропущен.
-- Dev автоматически перешёл на source SHA `3e493ec7d33d1939f5dcb152c7e8b397a8d4864c` и digest `sha256:3048a0f1b155aa467206c6f1748efe545e76f2f6bb8dc4033a463d78743b33f7`.
-- Prod при этом сохранил первоначальный source SHA и digest: рабочая ветка его не обновила.
-- Действующие условия workflow: push без фильтра путей, любая исходная ветка → dev; `refs/heads/main` → также prod. Ветка `gitops/hw6` исключена как служебная.
-- Родительский Application `relay-hw6-delivery` читает `applications/` служебной ветки. Dev имеет волну 0, prod — 1; оценка здоровья проверяет выбранные source SHA и image override.
-- В CI нет self-hosted runner, kubeconfig или доступа к Kubernetes API: доставка выполняется только контроллерами Argo CD.
+[Успешный workflow](https://github.com/itzephir/hse-infra-course/actions/runs/44090004399) для source commit `71fdff4e42edd0dfdbdb2236ddcc6652c45d0f56`:
 
-## Первоначальная сборка и опубликованный образ
+- Образ: `ghcr.io/itzephir/hse-infra-course@sha256:ef024e401cb956b1da47bbce6f1857f91cecada948abade4255385bb6930fda1`.
+- Chart: `oci://ghcr.io/itzephir/charts/relay`, версия `0.44090004399.1`.
+- Chart скачан анонимно через `helm pull`; OCI digest chart — `sha256:c86072df45699236afad38bd0c2ef1495115670eca3d3532d81ed0509a90c2ce`.
+- Dev Application с `targetRevision: '*'` выбрал эту версию. Deployment получил точный image digest и annotation `relay/source-revision` с указанным source SHA; rollout завершился.
 
-- [Успешный запуск GitHub Actions HW6 image](https://github.com/itzephir/hse-infra-course/actions/runs/44061782756).
-- Исходный commit приложения: `5e2bd8df736045b5bce893d9a35df9c8d12a3354`.
-- Тег: `ghcr.io/itzephir/hse-infra-course:sha-5e2bd8df736045b5bce893d9a35df9c8d12a3354`.
-- Проверенный образ:
+PR-проверка [Actions](https://github.com/itzephir/hse-infra-course/actions/runs/44090401497) также прошла и не публиковала артефакты.
 
-```text
-ghcr.io/itzephir/hse-infra-course@sha256:f75f3dad2ae8bc6ded179927fc89004d55e8c19b8936314b6d8092442908cac3
-```
+## Доставка из main
 
-OCI index содержит `linux/amd64` и `linux/arm64`; обе платформы прошли HTTP smoke-тест в Actions. Анонимное получение manifest из GHCR проверено отдельно. Kubelet скачал образ без `imagePullSecrets`.
+После merge [PR №2](https://github.com/itzephir/hse-infra-course/pull/2) source commit — `ede9180efb83db63a73bbc4daea5aa77b622ec69`.
 
-## Последовательность доставки
-
-1. Commit `5e2bd8d` опубликовал приложение и workflow, затем Actions собрал и проверил образ.
-2. Commit `08d616b` зафиксировал digest в dev overlay. Argo CD самостоятельно создал Deployment и Service из Git.
-3. Dev достиг `Synced / Healthy`; проверены главная страница, CSS, SVG, `/healthz`, точный image в Deployment и SHA в `/version.json`.
-4. Число реплик dev вручную изменено с 1 на 2. Argo CD с `selfHeal` автоматически вернул его к 1; приложение снова `Synced`.
-5. После проверки dev commit `6edcfc4` продвинул тот же digest в prod. Argo CD создал две готовые реплики; повторной сборки не было.
-6. В prod повторены проверки HTTP, source SHA и image digest.
-
-## Итоговое состояние
-
-Кластер: профиль minikube `hw6`, Docker driver, containerd, Kubernetes `v1.37.0`, ARM64. Argo CD `v3.6.1`; все семь Pods компонентов находятся в Running/Ready. Профиль `lecture` остался остановленным, текущий kubecontext остался `lecture`; команды стенда явно указывают `--context hw6`.
+[Workflow main](https://github.com/itzephir/hse-infra-course/actions/runs/44090921538) опубликовал:
 
 ```text
-NAME             SYNC STATUS   HEALTH STATUS
-relay-hw6-dev    Synced        Healthy
-relay-hw6-prod   Synced        Healthy
-
-dev:  Deployment relay, 1/1 available
-prod: Deployment relay, 2/2 available
+IMAGE=ghcr.io/itzephir/hse-infra-course@sha256:cafb574358c700493fffad0bbfd7553a29a7f8436adcd2018d63928fbe050194
+CHART=oci://ghcr.io/itzephir/charts/relay
+CHART_VERSION=0.44090921538.1
 ```
 
-Оба `/version.json` вернули:
+Dev получил chart этой версии. Prod имеет `targetRevision: main`, `path: hw/06/chart`; параметр `image.tag=sha-$ARGOCD_APP_REVISION` разрешился в `sha-ede9180efb83db63a73bbc4daea5aa77b622ec69`.
 
-```json
-{"name":"relay","revision":"5e2bd8df736045b5bce893d9a35df9c8d12a3354"}
-```
+Проверен реальный PreSync Job: его `EXPECTED_REVISION` содержал SHA main, он ожидал эту версию через HTTP dev. Пока Job работал, прежние две реплики prod оставались Ready. После готовности dev prod выполнил rollout. Оба Application достигли `Synced / Healthy`.
 
-Во время первоначальной проверки приложения Argo CD следили за `codex/hw6-gitops`; теперь родитель следит за `gitops/hw6`, а дочерние приложения закрепляют исходные commit SHA. Интерфейс Argo CD доступен по HTTPS; его страница входа проверена с доверием к конкретному локальному сертификату, без отключения проверки TLS.
+Сверены фактические `containerStatuses[].imageID`: Pod dev и оба Pod prod использовали одинаковый digest `sha256:cafb574358c700493fffad0bbfd7553a29a7f8436adcd2018d63928fbe050194`.
 
-## Дополнительные проверки
+## Опрос Helm registry
 
-- Локальная сборка контейнера и HTTP smoke-тест ARM64 с файловой системой только для чтения.
-- Лендинг просмотрен в браузере на desktop и при viewport `390 × 844`; переход по основной кнопке работает, мобильная компоновка читается без горизонтального переполнения.
-- Действующий и два альтернативных workflow прошли `actionlint`.
-- YAML и оба Kustomize overlays разобраны; shell-скрипты прошли проверку синтаксиса, ссылки Markdown проверены.
+Во время миграции обнаружен старый кэш списка Helm-версий. Для этого небольшого стенда [refresh-settings.yaml](argocd/refresh-settings.yaml) задаёт опрос 30 секунд с jitter до 5 секунд и repo/default cache repo-server 60 секунд. Существующий кэш при переходе однократно сброшен через Hard Refresh; обычная доставка использует автоматический опрос.
 
-Push CD остаётся альтернативным примером из условия; на работающем стенде доставкой управляет Argo CD. Запуск альтернативных push jobs и предоставление CI kubeconfig не выполнялись.
+Стенд использует minikube `hw6`, Kubernetes `v1.37.0`, Argo CD `v3.6.1`. Родительского Application и записи в GitOps-ветку в текущем процессе нет. CI не получает kubeconfig; публичный OCI chart читается без registry-пароля.
 
-## Доступ и повторный запуск
+## Проверки артефактов
+
+- Контейнерные HTTP smoke-тесты AMD64/ARM64 в CI: `/`, `/style.css`, `/mark.svg`, `/healthz`, точный source SHA в `/version.json`.
+- `helm lint --strict`, рендеринг dev/prod и упаковка chart с точным digest. PreSync Job появляется только для prod и работает без ServiceAccount token.
+- Семантическая версия chart `0.<GitHub run ID>.<attempt>` успешно упакована, опубликована и разрешена Argo CD.
+- YAML, shell-синтаксис, ссылки документов и workflow проверены. Локальный actionlint старше настройки `concurrency.queue`; эту настройку дополнительно проверил реальный запуск GitHub Actions.
+
+## Доступ
 
 Пока работает [port-forward.sh](scripts/port-forward.sh): [dev](http://127.0.0.1:18080), [prod](http://127.0.0.1:18081), [Argo CD](https://127.0.0.1:18443).
 
-Если локальные адреса перестали отвечать, повторно запустить `bash hw/06/scripts/port-forward.sh`. Команды получения начального пароля Argo CD, остановки и возобновления minikube приведены в [решении](solution.md#запуск-и-доступ). Пароли, ключи и kubeconfig в Git не добавлены.
+Если локальные адреса перестали отвечать, повторно запустить `bash hw/06/scripts/port-forward.sh`. Начальный пароль Argo CD и команды остановки/возобновления minikube описаны в [решении](solution.md#запуск-и-доступ). Пароли и kubeconfig в Git не добавлены.
