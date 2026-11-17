@@ -7,6 +7,7 @@ metadata:
     app.kubernetes.io/name: argocd-cm
     app.kubernetes.io/part-of: argocd
 data:
+  resource.ignoreResourceUpdatesEnabled: 'false'
   resource.customizations.health.argoproj.io_Application: |
     local hs = {status = "Progressing", message = "Waiting for the selected revision and image"}
     if obj.status == nil or obj.status.sync == nil or obj.spec.source == nil then

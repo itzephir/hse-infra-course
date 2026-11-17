@@ -16,7 +16,7 @@ spec:
     automated:
       enabled: true
       prune: true
-      selfHeal: true
+      selfHeal: false
       allowEmpty: false
     retry:
       limit: 3

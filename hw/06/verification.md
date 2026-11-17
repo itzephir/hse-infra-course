@@ -4,7 +4,16 @@
 
 [Решение](solution.md) · [Условие](README.md)
 
-## Сборка и опубликованный образ
+## Автоматическая доставка по веткам
+
+- [Push в рабочую ветку](https://github.com/itzephir/hse-infra-course/actions/runs/44066685357) успешно выполнил build и `record-dev`; `record-prod` пропущен.
+- Dev автоматически перешёл на source SHA `3e493ec7d33d1939f5dcb152c7e8b397a8d4864c` и digest `sha256:3048a0f1b155aa467206c6f1748efe545e76f2f6bb8dc4033a463d78743b33f7`.
+- Prod при этом сохранил первоначальный source SHA и digest: рабочая ветка его не обновила.
+- Действующие условия workflow: push без фильтра путей, любая исходная ветка → dev; `refs/heads/main` → также prod. Ветка `gitops/hw6` исключена как служебная.
+- Родительский Application `relay-hw6-delivery` читает `applications/` служебной ветки. Dev имеет волну 0, prod — 1; оценка здоровья проверяет выбранные source SHA и image override.
+- В CI нет self-hosted runner, kubeconfig или доступа к Kubernetes API: доставка выполняется только контроллерами Argo CD.
+
+## Первоначальная сборка и опубликованный образ
 
 - [Успешный запуск GitHub Actions HW6 image](https://github.com/itzephir/hse-infra-course/actions/runs/44061782756).
 - Исходный commit приложения: `5e2bd8df736045b5bce893d9a35df9c8d12a3354`.
