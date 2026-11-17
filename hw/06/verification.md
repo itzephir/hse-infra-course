@@ -1,6 +1,6 @@
 # Проверка доставки hw6
 
-Ниже сохранён проверенный этап Helm-доставки. Текущая схема уточнена в [решении](solution.md): dev получает OCI chart, prod — готовые манифесты из main с выбранным digest. PreSync и динамические prod-теги из прежнего этапа больше не используются.
+Текущая схема проверена на работающем стенде: dev получает OCI chart, prod — готовые манифесты из main с выбранным digest. PreSync и динамические prod-теги из прежнего этапа больше не используются. Описание архитектуры — в [решении](solution.md).
 
 [Решение](solution.md) · [Условие](README.md)
 
@@ -12,6 +12,21 @@
 - `kubectl kustomize` рендерит только Deployment/Service в `hw6-relay-prod`, с указанным digest и source SHA. Helm dev проходит `helm lint --strict`.
 - На работающем Argo CD проверены два запрета: dev-проект отклонил Application с назначением в prod namespace; prod-проект отклонил OCI Helm-источник. Оба получили `InvalidSpecError`, синхронизации не запускались, проверочные Applications удалены.
 - Защита main остаётся предпосылкой учебной модели. Namespace-политики, квоты и сетевое усиление описаны как возможный следующий уровень, без изменения minikube.
+
+## Проверка независимости prod от новой публикации CI
+
+После принятия [PR №4](https://github.com/itzephir/hse-infra-course/pull/4) main разрешился в commit `eb080a066733e6a2dd0651c02c4f3a06e2779afb`. [Main workflow 44099698982](https://github.com/itzephir/hse-infra-course/actions/runs/44099698982) завершился успешно и выпустил:
+
+```text
+SOURCE_SHA=eb080a066733e6a2dd0651c02c4f3a06e2779afb
+IMAGE=ghcr.io/itzephir/hse-infra-course@sha256:e62db4460c56ec8762cdbc493d3821e4ec6f25d82ed552b07ac6f14d07553d3f
+CHART_VERSION=0.44099698982.1
+```
+
+- Dev без ручного refresh выбрал chart `0.44099698982.1` и новый digest `e62db446…`; `/version.json` вернул source SHA `eb080a0…`.
+- Prod автоматически применил Kustomize-конфигурацию из нового main, но сохранил выбранный digest `e60e5a4c…` и source SHA `07f4867…`. Новая публикация CI не выбрала за него другой образ.
+- Оба Application достигли `Synced / Healthy`; обе реплики prod готовы. `/healthz` dev и prod вернул `relay`, `/version.json` prod — полный выбранный source SHA `07f4867c0a0795d198c5826ed9a4512c01f4d853`.
+- Оба Application используют отдельные AppProject. Прежний общий проект `relay-hw6` удалён после переключения.
 
 ## Предыдущий этап Helm-доставки
 
