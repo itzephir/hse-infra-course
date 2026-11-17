@@ -3,10 +3,12 @@ kind: Kustomization
 namespace: hw6-relay-prod
 resources:
   - ../../base
+patches:
+  - path: release.yaml
 replicas:
   - name: relay
     count: 2
 images:
   - name: relay
     newName: ghcr.io/itzephir/hse-infra-course
-    digest: sha256:f75f3dad2ae8bc6ded179927fc89004d55e8c19b8936314b6d8092442908cac3
+    digest: sha256:e60e5a4c3efafb7b7b773c66ebe53461d94789654b8a8ab88ad806d92c14db24

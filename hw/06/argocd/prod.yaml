@@ -4,24 +4,11 @@ metadata:
   name: relay-hw6-prod
   namespace: argocd
 spec:
-  project: relay-hw6
+  project: relay-hw6-prod
   source:
     repoURL: https://github.com/itzephir/hse-infra-course.git
     targetRevision: main
-    path: hw/06/chart
-    helm:
-      releaseName: relay
-      valuesObject:
-        replicaCount: 2
-        promotion:
-          enabled: true
-      parameters:
-        - name: image.tag
-          value: sha-$ARGOCD_APP_REVISION
-          forceString: true
-        - name: sourceRevision
-          value: $ARGOCD_APP_REVISION
-          forceString: true
+    path: hw/06/manifests/overlays/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: hw6-relay-prod

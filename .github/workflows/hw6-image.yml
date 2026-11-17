@@ -10,6 +10,8 @@ on:
       - .github/workflows/hw6-image.yml
       - hw/06/chart/**
       - hw/06/scripts/package-chart.py
+      - hw/06/manifests/**
+      - hw/06/argocd/**
   workflow_dispatch:
   workflow_call:
     inputs:
@@ -89,13 +91,15 @@ jobs:
       - uses: azure/setup-helm@v4
         with:
           version: v3.19.4
-      - name: Validate Helm templates
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: v1.37.2
+      - name: Validate dev chart and reviewed prod manifests
         run: |
           set -euo pipefail
           helm lint hw/06/chart --strict
           helm template relay hw/06/chart --namespace hw6-relay-dev > /tmp/hw6-dev.yaml
-          helm template relay hw/06/chart --namespace hw6-relay-prod \
-            --set replicaCount=2 --set promotion.enabled=true > /tmp/hw6-prod.yaml
+          kubectl kustomize hw/06/manifests/overlays/prod > /tmp/hw6-prod.yaml
       - name: Record the tested release
         if: github.event_name != 'pull_request'
         id: release
@@ -108,7 +112,6 @@ jobs:
           set -euo pipefail
           image="ghcr.io/itzephir/hse-infra-course@$DIGEST"
           [[ "$image" =~ ^ghcr\.io/itzephir/hse-infra-course@sha256:[a-f0-9]{64}$ ]]
-          docker buildx imagetools create --tag "ghcr.io/itzephir/hse-infra-course:sha-$SOURCE_SHA" "$image"
           chart_version="0.$GITHUB_RUN_ID.$GITHUB_RUN_ATTEMPT"
           python3 hw/06/scripts/package-chart.py "$SOURCE_SHA" "$image" "$chart_version" "$RUNNER_TEMP/hw6-chart"
           printf '%s' "$GH_TOKEN" | helm registry login ghcr.io --username "$GH_USER" --password-stdin

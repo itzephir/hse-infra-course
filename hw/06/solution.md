@@ -8,7 +8,7 @@
 
 Для задания создано самостоятельное приложение **Relay** — небольшой абстрактный лендинг в [app/](app/). Он состоит из HTML, CSS и SVG, не требует базы данных, внешних сервисов или установки пакетов. Dockerfile упаковывает страницу в nginx без root-прав. Nginx слушает порт `8080`, `/healthz` возвращает `relay`, а `/version.json` содержит SHA исходного коммита, переданный при сборке.
 
-Весь пример находится в одном репозитории [itzephir/hse-infra-course](https://github.com/itzephir/hse-infra-course). Контейнер публикуется в **`ghcr.io/itzephir/hse-infra-course`**. Локальный стенд — отдельный профиль minikube `hw6` с Argo CD. Любой push в исходную ветку обновляет dev, а push в `main` также обновляет prod после готовности dev. Команды для него явно выбирают `--context hw6`.
+Весь пример находится в одном репозитории [itzephir/hse-infra-course](https://github.com/itzephir/hse-infra-course). Контейнер публикуется в **`ghcr.io/itzephir/hse-infra-course`**. Локальный стенд — отдельный профиль minikube `hw6` с Argo CD. Любой успешный push публикует новую dev-версию. Prod автоматически применяет только Kubernetes-конфигурацию, принятую в `main`; версия контейнера в ней закреплена digest. Команды для него явно выбирают `--context hw6`.
 
 | Параметр | dev | prod |
 | --- | --- | --- |
@@ -27,7 +27,7 @@
 
 - Любой push в любую исходную ветку запускает сборку и публикацию, в том числе при изменении только документации. CI публикует проверенный образ и версионированный Helm chart в GHCR; запись в отдельную GitOps-ветку больше не нужна.
 - Pull request с такими изменениями запускает сборку AMD64 и HTTP-проверки без публикации. Также предусмотрены ручной запуск и вызов как reusable workflow.
-- Для push и ручного запуска Buildx/QEMU собирают `linux/amd64` и `linux/arm64` в один OCI index и публикуют кандидат с тегом `ci-R-A`, где R — номер запуска GitHub, A — номер попытки. После успешных HTTP- и Helm-проверок тот же digest получает тег `sha-S`, где S — полный SHA исходного коммита. ARM64 нужен для локального minikube на Apple Silicon.
+- Для push и ручного запуска Buildx/QEMU собирают `linux/amd64` и `linux/arm64` в один OCI index и публикуют кандидат с тегом `ci-R-A`, где R — номер запуска GitHub, A — номер попытки. После успешных HTTP-, Helm- и Kustomize-проверок digest передаётся в Helm chart dev и artifact `release.env`. Prod не выбирает образы по тегам. ARM64 нужен для локального minikube на Apple Silicon.
 - После публикации [smoke-image.sh](scripts/smoke-image.sh) запускает обе платформы по полученному digest. Он проверяет главную страницу, CSS, SVG, `/healthz` и точный SHA в `/version.json`. Успешный artifact `release.env` создаётся только после этих проверок.
 - Artifact и сводка запуска содержат `SOURCE_SHA=S` и `IMAGE=ghcr.io/itzephir/hse-infra-course@sha256:D`. В artifact дополнительно сохраняются адрес chart и `CHART_VERSION`; для push CD полный IMAGE также возвращается как output workflow.
 
@@ -35,13 +35,13 @@
 
 Тег связывает образ с исходниками, а **digest** фиксирует конкретную сборку. Продвижение между окружениями не пересобирает приложение: dev и prod получают один и тот же OCI index. В работающий Pod Kubernetes выбирает подходящий для узла платформенный образ из этого index.
 
-## 1. Pull-модель: dev из Helm registry, prod из main
+## 1. Pull-модель: dev из Helm registry, prod-манифесты из main
 
-В [hw/06/chart](chart/) находится Helm chart `relay`: Deployment, Service и условный PreSync Job для prod. Базовые values задают одну реплику, настройки ресурсов и ссылку на образ. Шаблоны сохраняют nginx без root, файловую систему только для чтения и временный `/tmp`.
+В [hw/06/chart](chart/) находится Helm chart `relay` для dev: Deployment и Service. Базовые values задают одну реплику, настройки ресурсов и ссылку на образ. Шаблоны сохраняют nginx без root, файловую систему только для чтения и временный `/tmp`.
 
 После сборки и проверок CI:
 
-1. Публикует проверенный образ в `ghcr.io/itzephir/hse-infra-course` и тег `sha-S` для конкретного source commit S.
+1. Публикует и проверяет образ в `ghcr.io/itzephir/hse-infra-course`; его digest соответствует конкретному source commit S.
 2. Создаёт копию chart, записывает в её values **точный image digest** и source SHA.
 3. Упаковывает chart версией `0.R.A` (R — уникальный GitHub run ID, A — попытка) и публикует через `helm push` в **`oci://ghcr.io/itzephir/charts/relay`**.
 
@@ -66,46 +66,68 @@ source:
 
 Для публичного OCI-источника [helm-repository.yaml](argocd/helm-repository.yaml) содержит только URL, тип `helm` и `enableOCI: true`; паролей в этом файле нет. Приватный chart требует отдельно настроенных registry credentials.
 
-### Prod: chart прямо из main
+### Prod: готовые Kubernetes-манифесты из main
 
-[Application prod](argocd/prod.yaml):
+[Application prod](argocd/prod.yaml) настроен напрямую на Git:
 
 ```yaml
-source:
-  repoURL: https://github.com/itzephir/hse-infra-course.git
-  targetRevision: main
-  path: hw/06/chart
-  helm:
-    releaseName: relay
-    valuesObject:
-      replicaCount: 2
-      promotion:
-        enabled: true
-    parameters:
-      - name: image.tag
-        value: sha-$ARGOCD_APP_REVISION
-        forceString: true
-      - name: sourceRevision
-        value: $ARGOCD_APP_REVISION
-        forceString: true
+spec:
+  project: relay-hw6-prod
+  source:
+    repoURL: https://github.com/itzephir/hse-infra-course.git
+    targetRevision: main
+    path: hw/06/manifests/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: hw6-relay-prod
 ```
 
-Prod постоянно следит за Git-веткой `main`. Argo CD подставляет SHA прочитанного коммита в `$ARGOCD_APP_REVISION`: из main S получится image `ghcr.io/itzephir/hse-infra-course:sha-S`. Значения вычисляются при рендеринге, в Application не требуется записывать новый commit SHA после каждого push. [Переменные среды рендеринга](https://argo-cd.readthedocs.io/en/stable/user-guide/build-environment/).
+Argo CD читает реальную конфигурацию из `main`, собирает Kustomize overlay и сам применяет Deployment/Service через Kubernetes API. В [kustomization.yaml](manifests/overlays/prod/kustomization.yaml) записан **точный digest** выбранного образа; [release.yaml](manifests/overlays/prod/release.yaml) сохраняет исходный SHA сборки и ссылку на CI.
 
-PreSync Job из chart проверяет HTTP `/version.json` в dev и ждёт **этот source SHA**. Пока версия main не появилась в готовом dev, prod Deployment не изменяется. Тег `sha-S` публикуется только после проверок CI и указывает на тот же образ, digest которого записан в dev chart. После успешного Job Argo CD выкладывает prod. Job работает без Kubernetes API, токена ServiceAccount и прав на изменение ресурсов; его действие — чтение HTTP внутри кластера.
+Новый Git commit конфигурации и исходный commit выбранного бинарного артефакта могут различаться. Например, commit B в main принимает digest сборки исходников A. Prod должен запускать выбранный A, поэтому больше нет подстановки `$ARGOCD_APP_REVISION` в тег образа. Сборка между dev и prod не повторяется.
+
+### Что означает «проверенный main»
+
+В учебной модели `main` изменяет доверенный оператор после ревью. Техническую защиту ветки в этом репозитории не настраиваем. Argo CD доверяет этому источнику и применяет его содержимое; статус успешного CI или факт review он сам не выводит из названия ветки.
+
+Процесс продвижения:
 
 ```text
-Push в любую ветку → image build/test → GHCR image
-  → Helm package с digest → GHCR chart → Argo CD → dev
-
-Push в main → та же цепочка публикации → dev
-  + Argo CD читает chart из main S
-  → PreSync: дождаться S в dev → prod: image sha-S
+CI → проверенный образ D + Helm chart → dev
+  → оператор проверяет кандидата из успешного main CI
+  → PR: prod digest = D, source = A, ссылка на сборку
+  → review → main
+  → Argo CD получает main → применяет prod с D
 ```
 
-При ошибке CI или отсутствии нужной версии в dev проверка prod завершается неуспешно, а прежний prod Deployment остаётся работать. Для transient ошибок настроены повторы синхронизации. Последующий push другой ветки обновляет общий dev и оставляет prod на main. Если новые chart выходят быстрее опроса, промежуточные версии могут быть пропущены; PreSync в этом случае не разрешит выкладку main, который не успел пройти dev. Для обязательной проверки каждого релиза нужны отдельные dev-окружения либо очередь продвижения.
+[prepare-prod-release.py](scripts/prepare-prod-release.py) готовит локальный diff по номеру CI run:
 
-Argo CD автоматически проверяет источники и синхронизирует изменения; `selfHeal` исправляет drift, `prune` удаляет управляемые ресурсы, исчезнувшие из chart. CI имеет только доступ к GHCR и не получает kubeconfig. Прежние родительское приложение и запись Application в `gitops/hw6` больше не используются. [Проект](argocd/project.yaml) разрешает Git/OCI-источники, два namespaces и Deployment/Service/Job.
+```bash
+python3 hw/06/scripts/prepare-prod-release.py RUN_ID
+kubectl kustomize hw/06/manifests/overlays/prod
+git diff -- hw/06/manifests/overlays/prod/
+```
+
+Скрипт допускает только завершённую успешную сборку workflow `hw6-image.yml` из `main`, сверяет SHA artifact с SHA run и принимает только `image@sha256:…`. Он обновляет локальные prod-манифесты для review; Git commit, merge и доступ к кластеру остаются за оператором. Проверка CI-метаданных подтверждает происхождение выбранного run, а доверие к процессу сборки и ревью остаётся предпосылкой модели.
+
+Обычный CI имеет `contents: read` и `packages: write`, публикует только артефакты и не вызывает эту процедуру продвижения. Перезапись registry-тега не меняет содержимое, выбранное prod по digest. Удаление артефакта или недоступность registry — отдельный риск доступности, который digest не устраняет.
+
+### Разделение полномочий Argo CD
+
+В [project.yaml](argocd/project.yaml) определены два проекта:
+
+| Проект | Источник | Назначение | Разрешённые ресурсы |
+| --- | --- | --- | --- |
+| `relay-hw6-dev` | OCI Helm registry | Только `hw6-relay-dev` | Deployment, Service |
+| `relay-hw6-prod` | Git-репозиторий | Только `hw6-relay-prod` | Deployment, Service |
+
+Dev chart не получает разрешения создавать prod-ресурсы, менять Application/AppProject или создавать кластерные объекты. CI не получает kubeconfig или токен Argo CD. По сравнению с проверкой `if main` внутри изменяемого workflow, выбор реального состояния prod перенесён в доверенный Git и права Argo CD. [AppProject](https://argo-cd.readthedocs.io/en/stable/user-guide/projects/).
+
+### Что достаточно для учебного minikube
+
+Один узел minikube оставляем намеренно: это модель доставки, а не физически независимый production. Разные AppProject ограничивают применение Kubernetes-объектов, но не создают изоляцию ядра и общих ресурсов узла.
+
+Если усиливать стенд без второго кластера, полезны namespace-политики Pod Security `restricted` против privileged/hostPath, ResourceQuota + LimitRange для бюджета dev и NetworkPolicy для трафика между окружениями. NetworkPolicy имеет смысл только при CNI, который действительно её исполняет; политику без такого плагина нельзя считать работающей защитой. Эти механизмы описаны как следующий уровень, их применение не входит в текущую учебную модель.
 
 ## 2. Push-модель: GitHub Actions → kubectl apply
 
@@ -156,7 +178,7 @@ Kubernetes не следит за новыми тегами registry. Новый
 | Кто собирает и где хранит | Actions → `ghcr.io/itzephir/hse-infra-course` | Тот же CI и GHCR |
 | Как выбирается dev-версия | CI публикует chart с digest D; dev выбирает последнюю версию chart | Output сборки передаётся в dev job |
 | Кто начинает применение | Контроллер замечает новую версию chart | Dev job вызывает kubectl |
-| Как версия попадает в prod | Prod читает chart из main; PreSync ждёт этот source SHA в dev, image sha-S указывает на D | Успешный dev и environment approval; тот же output D |
+| Как версия попадает в prod | Review выбирает D в prod overlay; Argo CD читает этот overlay из main | Успешный dev и environment approval; тот же output D |
 | Что остаётся в истории | Git + artifact/запуск сборки | Запуск, параметры и artifact; их нужно сохранять |
 
 В обеих моделях прослеживается цепочка **исходный commit S → успешная сборка → digest D → проверка dev → prod**. Сборка между окружениями не повторяется. Даже если тег `sha-S` позже перезапишут при повторной сборке, уже выбранный digest останется определённым содержимым.
@@ -168,8 +190,8 @@ Kubernetes не следит за новыми тегами registry. Новый
 | Начальная настройка | Нужны контроллер, CRD и Application | Достаточно CI и kubectl при доступном API |
 | Права CI | Registry; доступ к Kubernetes API не нужен | Credentials и сетевой доступ к кластеру |
 | Ручной drift | Исправляется при self-heal | Остаётся до следующего применения |
-| Выбор версии окружения | Dev: версия OCI chart и digest; prod: main и тег sha-S | В output и параметрах запуска |
-| Dev → prod | PreSync-проверка main SHA в dev | Зависимости jobs и environment approval |
+| Выбор версии окружения | Dev: версия OCI chart; prod: digest в main | В output и параметрах запуска |
+| Dev → prod | Выбор проверенного digest через review main | Зависимости jobs и environment approval |
 | Удаление ресурсов | Prune удаляет управляемые объекты, исчезнувшие из Git | Обычный apply не удаляет исчезнувшие из YAML объекты |
 | Откат | Выбор прежнего chart dev; revert в main для prod | Повторное применение сохранённого релиза |
 | Недоступность доставки | Новые изменения не согласуются; работающий сайт продолжает работать | Новая выкладка ждёт Actions или доступ к API |
@@ -182,7 +204,7 @@ Kubernetes не следит за новыми тегами registry. Новый
 
 ```bash
 bash hw/06/scripts/start-cluster.sh
-# После первой публикации chart и наличия chart в main:
+# После первой публикации chart и принятия prod-манифестов в main:
 kubectl --context hw6 apply -f hw/06/argocd/dev.yaml
 kubectl --context hw6 apply -f hw/06/argocd/prod.yaml
 bash hw/06/scripts/port-forward.sh
