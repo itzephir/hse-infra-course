@@ -18,6 +18,7 @@
 | --- | --- | --- |
 | 2 | Развёртывание Kubernetes на bare metal | [Условие](hw/02/README.md) · [Решение](hw/02/solution.md) |
 | 3 | Изоляция команд в Kubernetes | [Условие](hw/03/README.md) · [Решение](hw/03/solution.md) |
+| 6 | Push- и pull-модели CD: лендинг, GHCR и Argo CD | [Условие](hw/06/README.md) · [Решение](hw/06/solution.md) |
 
 ## Структура
 
@@ -35,6 +36,15 @@ hw/                       Домашние задания
     README.md             Условие задания
     solution.md           Облако для друзей: ресурсы, доступ и границы изоляции
     manifests/            Примеры конфигурации Kubernetes
+  06/
+    README.md             Условие задания
+    solution.md           GitHub Actions, GHCR и Argo CD для лендинга Relay
+    app/                  Самостоятельное приложение и Dockerfile
+    manifests/            Общие ресурсы и overlays dev/prod
+    argocd/               AppProject и Application для dev/prod
+    workflows/            Примеры push-доставки GitHub Actions
+    scripts/              Проверки контейнера, minikube, фиксация образа и push CD
+    bootstrap/            Namespaces учебного стенда
 ```
 
 Для каждого следующего задания создаётся каталог `hw/NN/`: условие хранится в `README.md`, готовое решение — в `solution.md`. Дополнительные файлы размещаются рядом с решением по мере необходимости.

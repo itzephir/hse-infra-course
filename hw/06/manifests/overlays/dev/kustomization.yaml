@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: hw6-relay-dev
+resources:
+  - ../../base
+replicas:
+  - name: relay
+    count: 1
+images:
+  - name: relay
+    newName: ghcr.io/itzephir/hse-infra-course
+    digest: sha256:f75f3dad2ae8bc6ded179927fc89004d55e8c19b8936314b6d8092442908cac3
