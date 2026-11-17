@@ -1,6 +1,6 @@
 {
-  "source_sha": "3e493ec7d33d1939f5dcb152c7e8b397a8d4864c",
+  "source_sha": "84aa7cdc89c4a5bf2b0c0ab2e6bf862741fdfd81",
   "source_branch": "codex/hw6-gitops",
-  "image": "ghcr.io/itzephir/hse-infra-course@sha256:3048a0f1b155aa467206c6f1748efe545e76f2f6bb8dc4033a463d78743b33f7",
-  "run_url": "https://github.com/itzephir/hse-infra-course/actions/runs/44066685357"
+  "image": "ghcr.io/itzephir/hse-infra-course@sha256:905a42b856716afbb96493f4767324eb9344177733d375b207a27aeed500d056",
+  "run_url": "https://github.com/itzephir/hse-infra-course/actions/runs/44084714910"
 }

@@ -9,11 +9,11 @@ spec:
   project: relay-hw6
   source:
     repoURL: https://github.com/itzephir/hse-infra-course.git
-    targetRevision: 3e493ec7d33d1939f5dcb152c7e8b397a8d4864c
+    targetRevision: 84aa7cdc89c4a5bf2b0c0ab2e6bf862741fdfd81
     path: hw/06/manifests/overlays/dev
     kustomize:
       images:
-        - relay=ghcr.io/itzephir/hse-infra-course@sha256:3048a0f1b155aa467206c6f1748efe545e76f2f6bb8dc4033a463d78743b33f7
+        - relay=ghcr.io/itzephir/hse-infra-course@sha256:905a42b856716afbb96493f4767324eb9344177733d375b207a27aeed500d056
   destination:
     server: https://kubernetes.default.svc
     namespace: hw6-relay-dev
