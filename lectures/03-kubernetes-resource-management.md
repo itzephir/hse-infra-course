@@ -1,6 +1,6 @@
 # Лекция 3. Управление ресурсами и мультиарендность
 
-[К содержанию курса](../README.md) · [Предыдущая лекция](02-kubernetes-basics.md)
+[К содержанию курса](../README.md) · [Предыдущая лекция](02-kubernetes-basics.md) · [Следующая лекция](04-application-configuration.md)
 
 Тема: Namespace, requests и limits, LimitRange, ResourceQuota, RBAC и ServiceAccount. Дата на слайдах: 13.10.2026. Источник: `Л3.pdf`, 44 слайда; автор PDF - Максим Новосельцев. Учтены [исходные заметки с занятия](03-kubernetes-management-in-class.md).
 
